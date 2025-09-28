@@ -22,10 +22,6 @@ struct Cli {
     #[arg(short, long)]
     progress: bool,
     
-    /// Minimum file size to check (in bytes)
-    #[arg(short, long, default_value = "0")]
-    min_size: u64,
-    
     /// Output format: simple, detailed, json
     #[arg(short, long, default_value = "simple")]
     format: String,
@@ -71,9 +67,8 @@ fn calculate_file_hash(file_path: &PathBuf) -> Result<String> {
     Ok(hash)
 }
 
-fn scan_directory(path: &PathBuf, min_size: u64, show_progress: bool) -> Result<Vec<FileInfo>> {
+fn scan_directory(path: &PathBuf, show_progress: bool) -> Result<Vec<FileInfo>> {
     info!("Starting directory scan: '{}'", path.display());
-    debug!("Minimum file size filter: {} bytes", min_size);
     
     let mut files = Vec::new();
     let walker = WalkDir::new(path).into_iter();
@@ -94,7 +89,6 @@ fn scan_directory(path: &PathBuf, min_size: u64, show_progress: bool) -> Result<
     
     let mut total_files_found = 0;
     let mut files_processed = 0;
-    let mut files_skipped_size = 0;
     
     for entry in walker {
         let entry = entry.with_context(|| "Failed to read directory entry")?;
@@ -108,19 +102,13 @@ fn scan_directory(path: &PathBuf, min_size: u64, show_progress: bool) -> Result<
                 .with_context(|| format!("Failed to read metadata for: '{}'", path.display()))?;
             let size = metadata.len();
             
-            if size >= min_size {
-                files_processed += 1;
-                let hash = calculate_file_hash(&path.to_path_buf())?;
-                files.push(FileInfo {
-                    path: path.to_path_buf(),
-                    size,
-                    hash,
-                });
-            } else {
-                files_skipped_size += 1;
-                debug!("Skipped file '{}' (size: {} bytes < min: {} bytes)", 
-                       path.display(), size, min_size);
-            }
+            files_processed += 1;
+            let hash = calculate_file_hash(&path.to_path_buf())?;
+            files.push(FileInfo {
+                path: path.to_path_buf(),
+                size,
+                hash,
+            });
         }
     }
     
@@ -128,8 +116,8 @@ fn scan_directory(path: &PathBuf, min_size: u64, show_progress: bool) -> Result<
         pb.finish_with_message("Scan complete!");
     }
     
-    info!("Directory scan complete: {} total files, {} processed, {} skipped by size", 
-          total_files_found, files_processed, files_skipped_size);
+    info!("Directory scan complete: {} total files, {} processed", 
+          total_files_found, files_processed);
     
     Ok(files)
 }
@@ -259,17 +247,10 @@ fn main() -> Result<()> {
     }
     
     info!("Target directory: '{}'", absolute_path.display());
-    if cli.min_size > 0 {
-        info!("Minimum file size filter: {} bytes", cli.min_size);
-    }
     
     info!("Scanning directory: {}", absolute_path.display());
-    if cli.min_size > 0 {
-        info!("Minimum file size: {}", format_size(cli.min_size));
-    }
-
     
-    let files = scan_directory(&absolute_path, cli.min_size, cli.progress)?;
+    let files = scan_directory(&absolute_path, cli.progress)?;
     info!("Scanned {} files", files.len());
     
     let duplicates = find_duplicates(files);
