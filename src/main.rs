@@ -8,9 +8,9 @@ use std::time::Instant;
 use walkdir::WalkDir;
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, info, error};
+use log::{info, error};
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(name = "check-file-dups")]
 #[command(about = "A CLI tool to find duplicate files in a directory")]
 struct Cli {
@@ -23,23 +23,19 @@ struct Cli {
     verbose: bool,
 }
 
-#[derive(Debug)]
 struct FileInfo {
     path: PathBuf,
     size: u64,
     hash: String,
 }
 
-fn calculate_file_hash(file_path: &PathBuf) -> Result<String> {
-    debug!("Calculating hash for: '{}'", file_path.display());
-    
+fn calculate_file_hash(file_path: &PathBuf) -> Result<String> {   
     let file = File::open(file_path)
         .with_context(|| format!("Failed to open file: '{}'", file_path.display()))?;
     
     let mut reader = BufReader::new(file);
     let mut hasher = Hasher::new();
     let mut buffer = [0; 8192];
-    let mut total_bytes = 0;
     
     loop {
         let bytes_read = reader.read(&mut buffer)
@@ -50,18 +46,13 @@ fn calculate_file_hash(file_path: &PathBuf) -> Result<String> {
         }
         
         hasher.update(&buffer[..bytes_read]);
-        total_bytes += bytes_read;
     }
     
     let hash = hasher.finalize().to_hex().to_string();
-    debug!("Hash calculated for '{}': {} ({} bytes)", file_path.display(), hash, total_bytes);
-    
     Ok(hash)
 }
 
 fn scan_directory(path: &PathBuf) -> Result<Vec<FileInfo>> {
-    info!("Starting directory scan: '{}'", path.display());
-    
     let mut files = Vec::new();
     let walker = WalkDir::new(path).into_iter();
     
@@ -87,8 +78,6 @@ fn scan_directory(path: &PathBuf) -> Result<Vec<FileInfo>> {
         
         if path.is_file() {
             total_files_found += 1;
-            debug!("Found file: '{}'", path.display());
-            
             let metadata = path.metadata()
                 .with_context(|| format!("Failed to read metadata for: '{}'", path.display()))?;
             let size = metadata.len();
@@ -111,15 +100,13 @@ fn scan_directory(path: &PathBuf) -> Result<Vec<FileInfo>> {
         pb.finish_with_message("Scan complete!");
     }
     
-    info!("Directory scan complete: {} total files, {} processed", 
+    info!("Scan complete: {} total files, {} processed", 
           total_files_found, files_processed);
     
     Ok(files)
 }
 
 fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
-    info!("Analyzing {} files for duplicates", files.len());
-    
     let mut hash_groups: HashMap<String, Vec<FileInfo>> = HashMap::new();
     
     for file in files {
@@ -134,7 +121,7 @@ fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
     let duplicate_groups = hash_groups.len();
     let total_duplicates: usize = hash_groups.values().map(|group| group.len() - 1).sum();
     
-    info!("Duplicate analysis complete: {} unique hashes, {} duplicate groups, {} duplicate files", 
+    info!("{} unique hashes, {} duplicate groups, {} duplicate files", 
           total_groups, duplicate_groups, total_duplicates);
     
     hash_groups
@@ -186,12 +173,10 @@ fn main() -> Result<()> {
     
     // Initialize logger with millisecond timestamps
     env_logger::Builder::from_default_env()
-        .format_timestamp_millis()
-        .filter_level(if cli.verbose { log::LevelFilter::Debug } else { log::LevelFilter::Info })
+        .filter_level(log::LevelFilter::Info)
         .init();
     
     info!("Starting check-file-dups v{}", env!("CARGO_PKG_VERSION"));
-    debug!("Command line arguments: {:?}", cli);
     
     // Convert to absolute path for better error messages
     let absolute_path = cli.path.canonicalize()
@@ -206,13 +191,10 @@ fn main() -> Result<()> {
         error!("Path is not a directory: {}", absolute_path.display());
         anyhow::bail!("Path is not a directory: {}", absolute_path.display());
     }
-    
-    info!("Target directory: '{}'", absolute_path.display());
-    
-    info!("Scanning directory: {}", absolute_path.display());
+   
+    info!("Scanning: {}", absolute_path.display());
     
     let files = scan_directory(&absolute_path)?;
-    info!("Scanned {} files", files.len());
     
     let duplicates = find_duplicates(files);
     print_results(&duplicates);
@@ -221,4 +203,3 @@ fn main() -> Result<()> {
     info!("Program completed successfully in {:.2}s", elapsed.as_secs_f64());
     Ok(())
 }
-
