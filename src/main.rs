@@ -18,14 +18,6 @@ struct Cli {
     #[arg(default_value = ".")]
     path: PathBuf,
     
-    /// Show progress bar
-    #[arg(short, long)]
-    progress: bool,
-    
-    /// Output format: simple, detailed, json
-    #[arg(short, long, default_value = "simple")]
-    format: String,
-    
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -67,13 +59,13 @@ fn calculate_file_hash(file_path: &PathBuf) -> Result<String> {
     Ok(hash)
 }
 
-fn scan_directory(path: &PathBuf, show_progress: bool) -> Result<Vec<FileInfo>> {
+fn scan_directory(path: &PathBuf) -> Result<Vec<FileInfo>> {
     info!("Starting directory scan: '{}'", path.display());
     
     let mut files = Vec::new();
     let walker = WalkDir::new(path).into_iter();
     
-    let progress_bar = if show_progress {
+    let progress_bar = {
         let pb = ProgressBar::new_spinner();
         pb.set_style(
             ProgressStyle::default_spinner()
@@ -82,9 +74,8 @@ fn scan_directory(path: &PathBuf, show_progress: bool) -> Result<Vec<FileInfo>> 
                 .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
         );
         pb.set_message("Scanning files...");
+        pb.enable_steady_tick(std::time::Duration::from_secs(1));
         Some(pb)
-    } else {
-        None
     };
     
     let mut total_files_found = 0;
@@ -109,9 +100,13 @@ fn scan_directory(path: &PathBuf, show_progress: bool) -> Result<Vec<FileInfo>> 
                 size,
                 hash,
             });
+            
+            // Update progress bar message with file count
+            if let Some(pb) = progress_bar.as_ref() {
+                pb.set_message(format!("Scanning files... {} scanned", total_files_found));
+            }
         }
     }
-    
     if let Some(pb) = progress_bar {
         pb.finish_with_message("Scan complete!");
     }
@@ -162,9 +157,9 @@ fn format_size(size: u64) -> String {
     }
 }
 
-fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>, format: &str) {
+fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>) {
     if duplicates.is_empty() {
-        info!("No duplicate files found!");
+        println!("No duplicate files found!");
         return;
     }
     
@@ -173,49 +168,15 @@ fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>, format: &str) {
         .map(|group| group[0].size * (group.len() - 1) as u64)
         .sum();
     
-    info!("Found {} duplicate files wasting {} of space", 
+    println!("Found {} duplicate files wasting {} of space", 
              total_duplicates, format_size(total_wasted_space));
     
-    match format {
-        "detailed" => {
-            for (_hash, group) in duplicates {
-                println!("Hash: {}", _hash);
-                println!("Size: {}", format_size(group[0].size));
-                println!("Files:");
-                for file in group {
-                    println!("  '{}'", file.path.display());
-                }
-                println!();
-            }
+    for (_hash, group) in duplicates {
+        println!("Duplicate group ({}):", format_size(group[0].size));
+        for file in group {
+            println!("  '{}'", file.path.display());
         }
-        "json" => {
-            println!("{{");
-            println!("  \"duplicates\": [");
-            for (i, (_hash, group)) in duplicates.iter().enumerate() {
-                println!("    {{");
-                println!("      \"hash\": \"{}\",", _hash);
-                println!("      \"size\": {},", group[0].size);
-                println!("      \"files\": [");
-                for (j, file) in group.iter().enumerate() {
-                    println!("        \"{}\"{}", 
-                             file.path.display().to_string().replace('\\', "/"),
-                             if j < group.len() - 1 { "," } else { "" });
-                }
-                println!("      ]");
-                println!("    }}{}", if i < duplicates.len() - 1 { "," } else { "" });
-            }
-            println!("  ]");
-            println!("}}");
-        }
-        _ => { // simple format
-            for (_hash, group) in duplicates {
-                println!("Duplicate group ({}):", format_size(group[0].size));
-                for file in group {
-                    println!("  '{}'", file.path.display());
-                }
-                println!();
-            }
-        }
+        println!();
     }
 }
 
@@ -250,11 +211,11 @@ fn main() -> Result<()> {
     
     info!("Scanning directory: {}", absolute_path.display());
     
-    let files = scan_directory(&absolute_path, cli.progress)?;
+    let files = scan_directory(&absolute_path)?;
     info!("Scanned {} files", files.len());
     
     let duplicates = find_duplicates(files);
-    print_results(&duplicates, &cli.format);
+    print_results(&duplicates);
     
     let elapsed = start_time.elapsed();
     info!("Program completed successfully in {:.2}s", elapsed.as_secs_f64());
