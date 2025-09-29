@@ -56,43 +56,78 @@ fn scan_directory(path: &PathBuf) -> Result<Vec<FileInfo>> {
     let mut files = Vec::new();
     let walker = WalkDir::new(path).into_iter();
     
+    // First pass: count files and directories
+    let mut total_files = 0;
+    let mut total_dirs = 0;
+    for entry in WalkDir::new(path).into_iter() {
+        match entry {
+            Ok(entry) => {
+                if entry.file_type().is_file() {
+                    total_files += 1;
+                } else if entry.file_type().is_dir() {
+                    total_dirs += 1;
+                }
+            }
+            Err(_) => {
+                // Skip errors during counting
+            }
+        }
+    }
+    
+    info!("Found {} files and {} directories to scan", format_number(total_files), format_number(total_dirs));
+    
     let progress_bar = {
-        let pb = ProgressBar::new_spinner();
+        let pb = ProgressBar::new(total_files as u64);
         pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.green} {msg}")
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {percent}% {msg}")
                 .unwrap()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+                .progress_chars("#>-"),
         );
-        pb.set_message("Scanning files...");
-        pb.enable_steady_tick(std::time::Duration::from_secs(1));
         Some(pb)
     };
     
-    let mut total_files_found = 0;
     let mut files_processed = 0;
     
     for entry in walker {
-        let entry = entry.with_context(|| "Failed to read directory entry")?;
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                error!("Failed to read directory entry: {}", e);
+                continue;
+            }
+        };
         let path = entry.path();
         
         if path.is_file() {
-            total_files_found += 1;
-            let metadata = path.metadata()
-                .with_context(|| format!("Failed to read metadata for: '{}'", path.display()))?;
+            let metadata = match path.metadata() {
+                Ok(metadata) => metadata,
+                Err(e) => {
+                    error!("Failed to read metadata for '{}': {}", path.display(), e);
+                    continue;
+                }
+            };
             let size = metadata.len();
             
+            let hash = match calculate_file_hash(&path.to_path_buf()) {
+                Ok(hash) => hash,
+                Err(e) => {
+                    error!("Failed to calculate hash for '{}': {}", path.display(), e);
+                    continue;
+                }
+            };
+            
             files_processed += 1;
-            let hash = calculate_file_hash(&path.to_path_buf())?;
             files.push(FileInfo {
                 path: path.to_path_buf(),
                 size,
                 hash,
             });
             
-            // Update progress bar message with file count
+            // Update progress bar
             if let Some(pb) = progress_bar.as_ref() {
-                pb.set_message(format!("Scanning files... {} scanned", total_files_found));
+                pb.inc(1);
+                pb.set_message(format!("Scanned {} files...", format_number(files_processed)));
             }
         }
     }
@@ -100,8 +135,7 @@ fn scan_directory(path: &PathBuf) -> Result<Vec<FileInfo>> {
         pb.finish_with_message("Scan complete!");
     }
     
-    info!("Scan complete: {} total files, {} processed", 
-          total_files_found, files_processed);
+    info!("Scan complete: {} files processed", format_number(files_processed));
     
     Ok(files)
 }
@@ -122,9 +156,24 @@ fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
     let total_duplicates: usize = hash_groups.values().map(|group| group.len() - 1).sum();
     
     info!("{} unique hashes, {} duplicate groups, {} duplicate files", 
-          total_groups, duplicate_groups, total_duplicates);
+          format_number(total_groups), format_number(duplicate_groups), format_number(total_duplicates));
     
     hash_groups
+}
+
+fn format_number(n: usize) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    
+    for (i, &ch) in chars.iter().enumerate() {
+        if i > 0 && (chars.len() - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+    
+    result
 }
 
 fn format_size(size: u64) -> String {
@@ -156,7 +205,7 @@ fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>) {
         .sum();
     
     println!("Found {} duplicate files wasting {} of space", 
-             total_duplicates, format_size(total_wasted_space));
+             format_number(total_duplicates), format_size(total_wasted_space));
     
     for (_hash, group) in duplicates {
         println!("Duplicate group ({}):", format_size(group[0].size));
