@@ -1,8 +1,11 @@
-use crate::utils::{FileInfo, format_number, format_size};
-use colored::Colorize;
-use log::{info, warn};
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+use colored::Colorize;
+use indicatif::{HumanBytes, HumanCount};
+use log::{info, warn};
+
+use crate::utils::FileInfo;
 
 pub fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
     let mut hash_groups: HashMap<String, Vec<FileInfo>> = HashMap::new();
@@ -30,7 +33,7 @@ pub fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>, base_path: &Pa
         .sum();
     
     warn!("Found {} duplicate files wasting {} of space", 
-             format_number(total_duplicates), format_size(total_wasted_space));
+        HumanCount(total_duplicates.try_into().unwrap()), HumanBytes(total_wasted_space));
     
     // Sort duplicate groups by space savings (largest first)
     let mut sorted_groups: Vec<_> = duplicates.into_iter().collect();
@@ -41,7 +44,7 @@ pub fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>, base_path: &Pa
     });
     
     for (_hash, group) in sorted_groups {
-        warn!("Duplicate group ({}, {} files):", format_size(group[0].size), group.len());
+        warn!("Duplicate group ({}, {} files):", HumanBytes(group[0].size), group.len());
         for file in group {
             // Truncate the base path from the file path
             let relative_path = if file.path.starts_with(base_path) {

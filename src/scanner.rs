@@ -1,16 +1,18 @@
-use crate::cache::HashCache;
-use crate::utils::{FileInfo, format_number, format_size};
-use anyhow::Result;
-use blake3;
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{error, info};
-use rayon::prelude::*;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use anyhow::Result;
+use blake3;
+use indicatif::{HumanBytes, HumanCount, ProgressBar, ProgressStyle};
+use log::{error, info};
+use rayon::prelude::*;
 use walkdir::WalkDir;
+
+use crate::cache::HashCache;
+use crate::utils::FileInfo;
 
 pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache) -> Result<String> {
     // Check cache first
@@ -51,13 +53,13 @@ pub fn scan_directory_with_cache(
     let mut total_size = 0u64;
 
     info!("Scanning {}", path.display());
+    
     // Add a progress bar for the directory scan
     let pb = ProgressBar::new_spinner();
     pb.set_message("Scanning files and directories...");
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
     let mut file_paths = Vec::new();
-
     for entry in WalkDir::new(path).into_iter() {
         pb.tick();
         match entry {
@@ -79,10 +81,10 @@ pub fn scan_directory_with_cache(
             }
         }
     }
-    pb.finish_with_message("Directory scan complete");
+    pb.finish_and_clear();
     
     info!("Found {} files and {} directories ({})", 
-          format_number(total_files), format_number(total_dirs), format_size(total_size));
+    HumanCount(total_files), HumanCount(total_dirs), HumanBytes(total_size));
     
     let progress_bar = {
         let pb = ProgressBar::new(total_size as u64);
@@ -138,8 +140,8 @@ pub fn scan_directory_with_cache(
                     pb.set_position(size_processed as u64);
                     pb.set_message(format!(
                         "Scanned {} files ({})",
-                        format_number(processed),
-                        format_size(size_processed)
+                        HumanCount(processed.try_into().unwrap()),
+                        HumanBytes(size_processed)
                     ));
                     *last_update_guard = std::time::Instant::now();
                 }

@@ -1,11 +1,13 @@
-use check_file_dups::*;
-use clap::Parser;
 use anyhow::Result;
-use log::info;
-use simplelog;
+use clap::Parser;
+use indicatif::HumanDuration;
+use log::{error, info};
+use simplelog::{ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, TerminalMode, TermLogger, WriteLogger};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use time::macros::format_description;
+
+use check_file_dups::{Cli, HashCache, find_duplicates, print_results, scan_directory_with_cache};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -13,18 +15,18 @@ fn main() -> Result<()> {
     
     // Initialize console and file logging
     let log_file = std::env::current_dir()?.join(format!("{}.log", env!("CARGO_PKG_NAME")));
-    let log_level = simplelog::LevelFilter::Info;
-    let log_config = simplelog::ConfigBuilder::new()
+    let log_level = LevelFilter::Info;
+    let log_config = ConfigBuilder::new()
         .set_time_format_custom(format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"))
         .build();
-    simplelog::CombinedLogger::init(vec![
-        simplelog::TermLogger::new(
+    CombinedLogger::init(vec![
+        TermLogger::new(
             log_level,
             log_config.clone(),
-            simplelog::TerminalMode::Mixed,
-            simplelog::ColorChoice::Auto
+            TerminalMode::Mixed,
+            ColorChoice::Auto
         ),
-        simplelog::WriteLogger::new(
+        WriteLogger::new(
             log_level,
             log_config,
             std::fs::OpenOptions::new()
@@ -66,10 +68,10 @@ fn main() -> Result<()> {
 
     // Final cache save
     if let Err(e) = global_cache.save() {
-        log::error!("Failed to save hash cache on exit: {}", e);
+        error!("Failed to save hash cache on exit: {}", e);
     }
 
-    info!("Program completed successfully in {}", utils::format_human_elapsed(start_time.elapsed()));
+    info!("Program completed successfully in {}", HumanDuration(start_time.elapsed()));
 
     Ok(())
 }

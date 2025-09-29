@@ -1,10 +1,12 @@
-use anyhow::Result;
-use log::info;
-use serde_json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+use anyhow::Result;
+use indicatif::{HumanBytes, ProgressBar};
+use log::info;
+use serde_json;
 
 pub struct HashCache {
     pub cache_file: PathBuf,
@@ -23,11 +25,11 @@ impl HashCache {
         info!(
             "Loading hash cache from: {} ({})",
             cache_file.display(),
-            crate::utils::format_size(cache_size)
+            HumanBytes(cache_size)
         );
 
         // Show a spinner while loading the cache file
-        let spinner = indicatif::ProgressBar::new_spinner();
+        let spinner = ProgressBar::new_spinner();
         spinner.set_message("Loading hash cache...");
         spinner.enable_steady_tick(std::time::Duration::from_millis(100));
         
@@ -38,7 +40,6 @@ impl HashCache {
                 info!("No hash cache found, starting fresh");
             }
         }
-        spinner.finish_with_message("Hash cache loaded");
         Self {
             cache_file,
             cache: Arc::new(Mutex::new(cache))
@@ -77,11 +78,11 @@ impl HashCache {
         info!(
             "Saving hash cache to {} ({})",
             cache_path.display(),
-            crate::utils::format_size(cache_size)
+            HumanBytes(cache_size)
         );
 
         // Show a spinner while saving the cache file
-        let spinner = indicatif::ProgressBar::new_spinner();
+        let spinner = ProgressBar::new_spinner();
         spinner.set_message("Saving hash cache...");
         spinner.enable_steady_tick(std::time::Duration::from_millis(100));
         
@@ -89,7 +90,6 @@ impl HashCache {
             let content = serde_json::to_string_pretty(&*cache)?;
             fs::write(&self.cache_file, content)?;
         }
-        spinner.finish_with_message("Hash cache saved");
         Ok(())
     }
 }
