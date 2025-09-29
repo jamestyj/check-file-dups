@@ -1,1 +1,3 @@
 target/
+check-file-dups-cache.json
+check-file-dups.log

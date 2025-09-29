@@ -9,11 +9,7 @@ pub struct Cli {
     #[arg(default_value = ".")]
     pub path: PathBuf,
     
-    /// Number of parallel threads for hashing (default: number of CPU cores)
-    #[arg(short, long)]
+    /// Number of parallel threads for hashing (default: 4)
+    #[arg(short, long, default_value = "4")]
     pub threads: Option<usize>,
-    
-    /// Skip files smaller than specified size in MB (default: 0)
-    #[arg(short, long, default_value = "0")]
-    pub min_size: u64,
 }

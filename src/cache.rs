@@ -13,7 +13,9 @@ pub struct HashCache {
 
 impl HashCache {
     pub fn new() -> Self {
-        let cache_file = std::env::temp_dir().join("check-file-dups-cache.json");
+        let cache_file = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .join(format!("{}-cache.json", env!("CARGO_PKG_NAME")));
         let mut cache = HashMap::new();
 
         // Try to load existing cache

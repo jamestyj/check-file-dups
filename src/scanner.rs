@@ -41,8 +41,7 @@ pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache) -> Result<Str
 pub fn scan_directory_with_cache(
     path: &PathBuf, 
     cache: &HashCache, 
-    num_threads: usize, 
-    min_size_mb: u64
+    num_threads: usize
 ) -> Result<Vec<FileInfo>> {
     let mut files = Vec::new();
     let walker = WalkDir::new(path).into_iter();
@@ -62,16 +61,13 @@ pub fn scan_directory_with_cache(
                 } else if path.is_file() {
                     if let Ok(metadata) = path.metadata() {
                         let size = metadata.len();
-                        // Skip files smaller than min_size_mb
-                        if min_size_mb == 0 || size >= min_size_mb * 1024 * 1024 {
-                            total_files += 1;
-                            total_size += size;
-                        }
+                        total_files += 1;
+                        total_size += size;
                     }
                 }
             }
-            Err(e) => {
-                error!("Failed to read directory entry: {}", e);
+            Err(_e) => {
+                // error!("Failed to read directory entry: {}", e);
             }
         }
     }
@@ -103,14 +99,7 @@ pub fn scan_directory_with_cache(
         let path = entry.path();
         
         if path.is_file() {
-            // Check file size before adding to processing list
-            if let Ok(metadata) = path.metadata() {
-                let size = metadata.len();
-                // Skip files smaller than min_size_mb
-                if min_size_mb == 0 || size >= min_size_mb * 1024 * 1024 {
-                    file_paths.push(path.to_path_buf());
-                }
-            }
+            file_paths.push(path.to_path_buf());
         }
     }
     
@@ -123,6 +112,7 @@ pub fn scan_directory_with_cache(
     let progress_bar = progress_bar.as_ref();
     let files_processed = Arc::new(AtomicUsize::new(0));
     let total_size_processed = Arc::new(AtomicU64::new(0));
+    let last_update = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
     
     // Process files in parallel
     let results: Vec<Result<FileInfo>> = file_paths
@@ -150,13 +140,15 @@ pub fn scan_directory_with_cache(
             let size_processed = total_size_processed.fetch_add(size, Ordering::Relaxed) + size;
             
             if let Some(pb) = progress_bar {
-                if processed % 100 == 0 || processed == total_files {
+                let mut last_update_guard = last_update.lock().unwrap();
+                if last_update_guard.elapsed().as_millis() > 200 {
                     pb.set_position(processed as u64);
                     pb.set_message(format!(
                         "Scanned {} files ({})",
                         format_number(processed),
                         format_size(size_processed)
                     ));
+                    *last_update_guard = std::time::Instant::now();
                 }
             }
             

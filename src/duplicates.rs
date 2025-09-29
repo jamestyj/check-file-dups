@@ -1,11 +1,13 @@
 use crate::utils::{FileInfo, format_number, format_size};
-use log::warn;
+use colored::Colorize;
+use log::{info, warn};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
     let mut hash_groups: HashMap<String, Vec<FileInfo>> = HashMap::new();
     
+    info!("Finding duplicates...");
     for file in files {
         let hash = file.hash.clone();
         hash_groups.entry(hash).or_insert_with(Vec::new).push(file);
@@ -19,10 +21,9 @@ pub fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
 
 pub fn print_results(duplicates: &HashMap<String, Vec<FileInfo>>, base_path: &PathBuf) {
     if duplicates.is_empty() {
-        println!("No duplicate files found!");
+        println!("{}", "No duplicate files found!".green());
         return;
     }
-    
     let total_duplicates = duplicates.values().map(|group| group.len() - 1).sum::<usize>();
     let total_wasted_space: u64 = duplicates.values()
         .map(|group| group[0].size * (group.len() - 1) as u64)

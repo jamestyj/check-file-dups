@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     let start_time = std::time::Instant::now();
     
     // Initialize console and file logging
-    let log_file = std::env::temp_dir().join("check-file-dups.log");    
+    let log_file = std::env::current_dir()?.join(format!("{}.log", env!("CARGO_PKG_NAME")));
     let log_level = simplelog::LevelFilter::Info;
     let log_config = simplelog::ConfigBuilder::new()
         .set_time_format_custom(format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"))
@@ -34,14 +34,11 @@ fn main() -> Result<()> {
         )
     ])?;
 
-    let num_threads = cli.threads.unwrap_or_else(|| num_cpus::get());
-
     info!(
-        "Starting check-file-dups v{} with options: path={}, threads={:?}, min_size={} MB",
+        "Starting check-file-dups v{} with options: path={}, threads={:?}",
         env!("CARGO_PKG_VERSION"),
         cli.path.display(),
-        num_threads,
-        cli.min_size
+        cli.threads.unwrap()
     );
     info!("Logging to {}", log_file.display());
     
@@ -62,22 +59,18 @@ fn main() -> Result<()> {
         std::process::exit(130); // STATUS_CONTROL_C_EXIT
     })?;
 
-    if cli.min_size > 0 {
-        info!("Skipping files smaller than {} MB", cli.min_size);
-    }
-    
-    let files = scan_directory_with_cache(&cli.path, &global_cache, num_threads, cli.min_size)?;
+    let files = scan_directory_with_cache(&cli.path, &global_cache, cli.threads.unwrap())?;
 
     let duplicates = find_duplicates(files);
     print_results(&duplicates, &cli.path);
-
-    let elapsed = start_time.elapsed();
-    info!("Program completed successfully in {:.2}s", elapsed.as_secs_f64());
 
     // Final cache save
     if let Err(e) = global_cache.save() {
         log::error!("Failed to save hash cache on exit: {}", e);
     }
+
+    let elapsed = start_time.elapsed();
+    info!("Program completed successfully in {:.2}s", elapsed.as_secs_f64());
 
     Ok(())
 }
