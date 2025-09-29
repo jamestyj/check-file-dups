@@ -9,7 +9,11 @@ pub struct Cli {
     #[arg(default_value = ".")]
     pub path: PathBuf,
     
-    /// Number of parallel threads for hashing (default: 4)
-    #[arg(short, long, default_value = "4")]
+    /// Number of parallel threads for hashing (default: 1)
+    #[arg(short, long, default_value = "1")]
     pub threads: Option<usize>,
+    
+    /// Skip using hash cache and compute all hashes fresh
+    #[arg(long)]
+    pub no_cache: bool,
 }

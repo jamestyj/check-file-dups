@@ -14,10 +14,12 @@ use walkdir::WalkDir;
 use crate::cache::HashCache;
 use crate::utils::FileInfo;
 
-pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache) -> Result<String> {
-    // Check cache first
-    if let Some(cached_hash) = cache.get_hash(file_path)? {
-        return Ok(cached_hash);
+pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache, use_cache: bool) -> Result<String> {
+    // Check cache first if enabled
+    if use_cache {
+        if let Some(cached_hash) = cache.get_hash(file_path)? {
+            return Ok(cached_hash);
+        }
     }
 
     let mut file = fs::File::open(file_path)?;
@@ -34,8 +36,10 @@ pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache) -> Result<Str
 
     let hash = hasher.finalize().to_hex().to_string();
     
-    // Cache the hash
-    cache.set_hash(file_path, hash.clone())?;
+    // Cache the hash if caching is enabled
+    if use_cache {
+        cache.set_hash(file_path, hash.clone())?;
+    }
     
     Ok(hash)
 }
@@ -43,7 +47,8 @@ pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache) -> Result<Str
 pub fn scan_directory_with_cache(
     path: &PathBuf, 
     cache: &HashCache, 
-    num_threads: usize
+    num_threads: usize,
+    no_cache: bool
 ) -> Result<Vec<FileInfo>> {
     let mut files = Vec::new();
     
@@ -90,7 +95,7 @@ pub fn scan_directory_with_cache(
         let pb = ProgressBar::new(total_size as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {percent}% {msg} ETA: {eta}")
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {percent}% {msg} ETA: {eta} ({binary_bytes_per_sec})")
                 .unwrap()
                 .progress_chars("#>-"),
         );
@@ -122,7 +127,7 @@ pub fn scan_directory_with_cache(
             };
             let size = metadata.len();
             
-            let hash = match calculate_file_hash(path, &cache) {
+            let hash = match calculate_file_hash(path, &cache, !no_cache) {
                 Ok(hash) => hash,
                 Err(e) => {
                     error!("Failed to calculate hash for '{}': {}", path.display(), e);

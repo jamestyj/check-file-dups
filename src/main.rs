@@ -37,12 +37,17 @@ fn main() -> Result<()> {
     ])?;
 
     info!(
-        "Starting check-file-dups v{} with options: path={}, threads={:?}",
+        "Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}",
         env!("CARGO_PKG_VERSION"),
         cli.path.display(),
-        cli.threads.unwrap()
+        cli.threads.unwrap(),
+        cli.no_cache
     );
     info!("Logging to {}", log_file.display());
+    
+    if cli.no_cache {
+        info!("Hash cache disabled - computing all hashes fresh");
+    }
     
     // Create a global cache instance for signal handling
     let global_cache = Arc::new(HashCache::new());
@@ -52,23 +57,30 @@ fn main() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true)); // Not directly used for loop control yet
     let running_for_signal = running.clone();
 
+    let no_cache_for_signal = cli.no_cache;
     ctrlc::set_handler(move || {
-        info!("Received interrupt signal, saving cache...");
-        if let Err(e) = cache_for_signal.save() {
-            eprintln!("Failed to save hash cache on exit: {}", e);
+        if !no_cache_for_signal {
+            info!("Received interrupt signal, saving cache...");
+            if let Err(e) = cache_for_signal.save() {
+                eprintln!("Failed to save hash cache on exit: {}", e);
+            }
+        } else {
+            info!("Received interrupt signal, exiting...");
         }
         running_for_signal.store(false, Ordering::SeqCst);
         std::process::exit(130); // STATUS_CONTROL_C_EXIT
     })?;
 
-    let files = scan_directory_with_cache(&cli.path, &global_cache, cli.threads.unwrap())?;
+    let files = scan_directory_with_cache(&cli.path, &global_cache, cli.threads.unwrap(), cli.no_cache)?;
 
     let duplicates = find_duplicates(files);
     print_results(&duplicates, &cli.path);
 
-    // Final cache save
-    if let Err(e) = global_cache.save() {
-        error!("Failed to save hash cache on exit: {}", e);
+    // Final cache save (only if caching is enabled)
+    if !cli.no_cache {
+        if let Err(e) = global_cache.save() {
+            error!("Failed to save hash cache on exit: {}", e);
+        }
     }
 
     info!("Program completed successfully in {}", HumanDuration(start_time.elapsed()));
