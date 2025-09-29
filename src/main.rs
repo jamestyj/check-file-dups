@@ -69,8 +69,7 @@ fn main() -> Result<()> {
         log::error!("Failed to save hash cache on exit: {}", e);
     }
 
-    let elapsed = start_time.elapsed();
-    info!("Program completed successfully in {:.2}s", elapsed.as_secs_f64());
+    info!("Program completed successfully in {}", utils::format_human_elapsed(start_time.elapsed()));
 
     Ok(())
 }

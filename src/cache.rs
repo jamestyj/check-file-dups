@@ -19,20 +19,26 @@ impl HashCache {
         let mut cache = HashMap::new();
 
         // Try to load existing cache
+        let cache_size = fs::metadata(&cache_file).map(|m| m.len()).unwrap_or(0);
+        info!(
+            "Loading hash cache from: {} ({})",
+            cache_file.display(),
+            crate::utils::format_size(cache_size)
+        );
+
+        // Show a spinner while loading the cache file
+        let spinner = indicatif::ProgressBar::new_spinner();
+        spinner.set_message("Loading hash cache...");
+        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+        
         if let Ok(content) = fs::read_to_string(&cache_file) {
             if let Ok(loaded_cache) = serde_json::from_str::<HashMap<String, (u64, String)>>(&content) {
                 cache = loaded_cache;
-                let cache_size = fs::metadata(&cache_file).map(|m| m.len()).unwrap_or(0);
-                info!(
-                    "Loading hash cache from: {} ({})",
-                    cache_file.display(),
-                    crate::utils::format_size(cache_size)
-                );
             } else {
                 info!("No hash cache found, starting fresh");
             }
         }
-
+        spinner.finish_with_message("Hash cache loaded");
         Self {
             cache_file,
             cache: Arc::new(Mutex::new(cache))
@@ -69,15 +75,21 @@ impl HashCache {
         let cache_path = &self.cache_file;
         let cache_size = fs::metadata(cache_path).map(|m| m.len()).unwrap_or(0);
         info!(
-            "Saving hash cache to: {} ({})",
+            "Saving hash cache to {} ({})",
             cache_path.display(),
             crate::utils::format_size(cache_size)
         );
+
+        // Show a spinner while saving the cache file
+        let spinner = indicatif::ProgressBar::new_spinner();
+        spinner.set_message("Saving hash cache...");
+        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
         
         if let Ok(cache) = self.cache.lock() {
             let content = serde_json::to_string_pretty(&*cache)?;
             fs::write(&self.cache_file, content)?;
         }
+        spinner.finish_with_message("Hash cache saved");
         Ok(())
     }
 }

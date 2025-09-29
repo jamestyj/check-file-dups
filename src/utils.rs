@@ -35,6 +35,26 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+pub fn format_human_elapsed(elapsed: std::time::Duration) -> String {
+    let elapsed_secs = elapsed.as_secs();
+    let elapsed_subsec_millis = elapsed.subsec_millis();
+    if elapsed_secs >= 3600 {
+        // Format as h:mm:ss
+        let hours = elapsed_secs / 3600;
+        let minutes = (elapsed_secs % 3600) / 60;
+        let seconds = elapsed_secs % 60;
+        format!("{hours}:{minutes:02}:{seconds:02}.{elapsed_subsec_millis:03} (h:mm:ss.mmm)")
+    } else if elapsed_secs >= 60 {
+        // Format as m:ss
+        let minutes = elapsed_secs / 60;
+        let seconds = elapsed_secs % 60;
+        format!("{minutes}:{seconds:02}.{elapsed_subsec_millis:03} (m:ss.mmm)")
+    } else {
+        // Format as s.mmm
+        format!("{}.{:03} seconds", elapsed_secs, elapsed_subsec_millis)
+    }
+}
+
 pub struct FileInfo {
     pub path: std::path::PathBuf,
     pub size: u64,

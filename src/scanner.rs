@@ -44,15 +44,22 @@ pub fn scan_directory_with_cache(
     num_threads: usize
 ) -> Result<Vec<FileInfo>> {
     let mut files = Vec::new();
-    let walker = WalkDir::new(path).into_iter();
     
     // First pass: count files and directories, calculate total size
     let mut total_files = 0;
     let mut total_dirs = 0;
     let mut total_size = 0u64;
 
-    info!("Scanning: {}", path.display());
+    info!("Scanning {}", path.display());
+    // Add a progress bar for the directory scan
+    let pb = ProgressBar::new_spinner();
+    pb.set_message("Scanning files and directories...");
+    pb.enable_steady_tick(std::time::Duration::from_millis(100));
+
+    let mut file_paths = Vec::new();
+
     for entry in WalkDir::new(path).into_iter() {
+        pb.tick();
         match entry {
             Ok(entry) => {
                 let path = entry.path();
@@ -63,6 +70,7 @@ pub fn scan_directory_with_cache(
                         let size = metadata.len();
                         total_files += 1;
                         total_size += size;
+                        file_paths.push(path.to_path_buf());
                     }
                 }
             }
@@ -71,38 +79,22 @@ pub fn scan_directory_with_cache(
             }
         }
     }
+    pb.finish_with_message("Directory scan complete");
     
     info!("Found {} files and {} directories ({})", 
           format_number(total_files), format_number(total_dirs), format_size(total_size));
     
     let progress_bar = {
-        let pb = ProgressBar::new(total_files as u64);
+        let pb = ProgressBar::new(total_size as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {percent}% {msg}")
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {percent}% {msg} ETA: {eta}")
                 .unwrap()
                 .progress_chars("#>-"),
         );
         Some(pb)
     };
-    
-    // Collect all file paths first
-    let mut file_paths = Vec::new();
-    for entry in walker {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(e) => {
-                error!("Failed to read directory entry: {}", e);
-                continue;
-            }
-        };
-        let path = entry.path();
-        
-        if path.is_file() {
-            file_paths.push(path.to_path_buf());
-        }
-    }
-    
+   
     // Set up parallel processing
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
@@ -115,6 +107,7 @@ pub fn scan_directory_with_cache(
     let last_update = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
     
     // Process files in parallel
+    info!("Scanning files...");
     let results: Vec<Result<FileInfo>> = file_paths
         .par_iter()
         .map(|path| {
@@ -142,7 +135,7 @@ pub fn scan_directory_with_cache(
             if let Some(pb) = progress_bar {
                 let mut last_update_guard = last_update.lock().unwrap();
                 if last_update_guard.elapsed().as_millis() > 200 {
-                    pb.set_position(processed as u64);
+                    pb.set_position(size_processed as u64);
                     pb.set_message(format!(
                         "Scanned {} files ({})",
                         format_number(processed),
