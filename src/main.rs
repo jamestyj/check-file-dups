@@ -47,7 +47,12 @@ impl HashCache {
         if let Ok(content) = fs::read_to_string(&cache_file) {
             if let Ok(loaded_cache) = serde_json::from_str::<HashMap<String, (u64, String)>>(&content) {
                 cache = loaded_cache;
-                info!("Loading hash cache from: {}", cache_file.display());
+                let cache_size = fs::metadata(&cache_file).map(|m| m.len()).unwrap_or(0);
+                info!(
+                    "Loading hash cache from: {} ({} bytes)",
+                    cache_file.display(),
+                    format_size(cache_size)
+                );
             } else {
                 info!("No hash cache found, starting fresh");
             }
