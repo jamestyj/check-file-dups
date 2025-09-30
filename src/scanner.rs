@@ -14,10 +14,10 @@ use walkdir::WalkDir;
 use crate::cache::HashCache;
 use crate::FileInfo;
 
-pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache, use_cache: bool) -> Result<String> {
+pub fn calculate_file_hash(file_path: &PathBuf, base_path: &PathBuf, cache: &HashCache, use_cache: bool) -> Result<String> {
     // Check cache first if enabled
     if use_cache {
-        if let Some(cached_hash) = cache.get_hash(file_path)? {
+        if let Some(cached_hash) = cache.get_hash(file_path, base_path)? {
             return Ok(cached_hash);
         }
     }
@@ -35,10 +35,10 @@ pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache, use_cache: bo
     }
 
     let hash = hasher.finalize().to_hex().to_string();
-    
+
     // Cache the hash if caching is enabled
     if use_cache {
-        cache.set_hash(file_path, hash.clone())?;
+        cache.set_hash(file_path, base_path, hash.clone())?;
     }
     
     Ok(hash)
@@ -112,6 +112,11 @@ pub fn scan_directory_with_cache(
     let files_processed = Arc::new(AtomicUsize::new(0));
     let total_size_processed = Arc::new(AtomicU64::new(0));
     let last_update = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+    let base_path = path.components().next().map(|c| {
+        let mut drive = std::path::PathBuf::new();
+        drive.push(c.as_os_str());
+        drive
+    }).unwrap_or_else(|| path.to_path_buf());
     
     // Process files in parallel
     info!("Scanning files...");
@@ -127,7 +132,7 @@ pub fn scan_directory_with_cache(
             };
             let size = metadata.len();
             
-            let hash = match calculate_file_hash(path, &cache, !no_cache) {
+            let hash = match calculate_file_hash(path, &base_path, &cache, !no_cache) {
                 Ok(hash) => hash,
                 Err(e) => {
                     error!("Failed to calculate hash for '{}': {}", path.display(), e);
