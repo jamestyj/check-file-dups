@@ -39,7 +39,8 @@ cargo build --release
 ## Command Line Options
 
 - `path`: Directory to scan (default: current directory)
-- `-t, --threads <THREADS>`: Number of parallel threads for hashing (default: 1)
+- `-t, --threads <THREADS>`: Number of parallel threads for hashing (default: 1). Use multiple threads if running on SSD. Otherwise single thread is faster.
+- `--no-cache`: Skip hash cache. For performance testing / benchmarking optimal number of threads to use.
 - `-h, --help`: Print help information
 
 ## Output
@@ -105,8 +106,18 @@ The project is organized into modular components:
 
 ## TODOs
 
-- Compile and run on NAS (avoids slow network transfer)
-- Try xxHash instead of Blake3 (especially when on NAS)
 - Add option to delete duplicate files + dry-run mode
   - Delete duplicate with longer filename
 - Check for original and -edited version, delete original
+- Ignore James/@eaDir/P1010249.jpg@SynoEAStream files
+- Add summary of transfer speed
+- Print hash cache stats
+- Prune hash cache file entries that no longer exist on disk
+- Print disk usage stats, summarise average photo and video files, etc.
+- Check metadata, group by day and month, etc.
+- NAS
+  - SSH key from Windows to NAS
+
+
+    "Z:\\Pictures\\2020\\Personal\\2020-06-20 Woodleigh Showroom\\IMG_20200620_104042.jpg"
+        "Pictures.2001-2019/2011-2019/2013/20130608_175902_Richtone(HDR).jpg"

@@ -18,6 +18,8 @@ fn main() -> Result<()> {
     let log_level = LevelFilter::Info;
     let log_config = ConfigBuilder::new()
         .set_time_format_custom(format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"))
+        .set_time_offset_to_local()
+        .unwrap_or_else(|builder| builder) // Fallback to UTC if local offset fails
         .build();
     CombinedLogger::init(vec![
         TermLogger::new(
@@ -37,7 +39,7 @@ fn main() -> Result<()> {
     ])?;
 
     info!(
-        "Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}",
+        "** Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}",
         env!("CARGO_PKG_VERSION"),
         cli.path.display(),
         cli.threads.unwrap(),
