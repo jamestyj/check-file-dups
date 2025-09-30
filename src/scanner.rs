@@ -65,7 +65,7 @@ pub fn scan_directory_with_cache(
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
     let mut file_paths = Vec::new();
-    for entry in WalkDir::new(path).into_iter() {
+    for entry in WalkDir::new(path).follow_links(true).into_iter() {
         pb.tick();
         match entry {
             Ok(entry) => {
