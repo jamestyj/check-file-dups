@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     ])?;
 
     info!(
-        "** Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}",
+        "Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}",
         env!("CARGO_PKG_VERSION"),
         cli.path.display(),
         cli.threads.unwrap(),

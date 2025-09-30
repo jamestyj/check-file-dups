@@ -6,92 +6,108 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use indicatif::{HumanBytes, HumanCount, ProgressBar};
-use log::info;
+use log::{info, warn};
 use serde_json;
-use zstd::stream::{decode_all, Encoder};
+use zstd::stream::{Encoder, decode_all};
 
+/// A thread-safe cache for storing file hash information.
+///
+/// `HashCache` maintains a mapping from file paths to a tuple containing:
+/// - modification time (`mtime`: `u64`)
+/// - file size (`size`: `u64`)
+/// - hash (`hash`: `String`)
+///
+/// The cache is protected by a mutex for safe concurrent access, and can be
+/// serialized/deserialized to a compressed JSON file on disk.
 pub struct HashCache {
+    /// Path to the cache file on disk.
     pub cache_file: PathBuf,
-    cache: Arc<Mutex<HashMap<String, (u64, u64, String)>>>, // path -> (mtime, size, hash)
+    /// The actual cache: path -> (mtime, size, hash).
+    cache: Arc<Mutex<HashMap<String, (u64, u64, String)>>>,
 }
 
 impl HashCache {
+    /// Creates a new `HashCache` instance.
+    ///
+    /// This function attempts to load a previously saved hash cache from a compressed JSON file
+    /// located in the current working directory. The cache file is named using the current
+    /// package name and has a `.json.zst` extension (Zstandard-compressed JSON).
+    ///
+    /// - If the cache file exists:
+    ///     - It reads and decompresses the file.
+    ///     - It attempts to parse the decompressed data as a `HashMap<String, (u64, u64, String)>`,
+    ///       which maps file paths to a tuple of (modification time, file size, hash).
+    ///     - If successful, it loads this map into the cache.
+    ///     - Progress and status are logged, and a spinner is shown during loading.
+    ///     - If parsing fails, a warning is logged and an empty cache is used.
+    /// - If the cache file does not exist:
+    ///     - A warning is logged and an empty cache is created.
+    ///
+    /// Returns a `HashCache` struct containing the cache file path and the loaded (or empty) cache,
+    /// wrapped in an `Arc<Mutex<...>>` for thread-safe access.
     pub fn new() -> Self {
         let cache_file = std::env::current_dir()
             .expect("Failed to get current directory")
             .join(format!("{}-cache.json.zst", env!("CARGO_PKG_NAME")));
         let mut cache = HashMap::new();
 
-        // Try to load existing cache
-        let cache_size = fs::metadata(&cache_file).map(|m| m.len()).unwrap_or(0);
-        info!(
-            "Loading hash cache from: {} ({})",
-            cache_file.display(),
-            HumanBytes(cache_size)
-        );
-
-        // Show a spinner while loading the cache file
-        let spinner = ProgressBar::new_spinner();
-        spinner.set_message("Loading hash cache...");
-        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-
         if let Ok(compressed) = fs::read(&cache_file) {
-            if !compressed.is_empty() {
-                let mut loaded = None;
+            let cache_size = fs::metadata(&cache_file).map(|m| m.len()).unwrap_or(0);
+            info!(
+                "Loading hash cache from: {} ({})",
+                cache_file.display(),
+                HumanBytes(cache_size)
+            );
+            let spinner = ProgressBar::new_spinner();
+            spinner.set_message("Loading hash cache...");
+            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
-                if let Ok(decoded_bytes) = decode_all(&compressed[..]) {
-                    // Try new format first (mtime, size, hash)
-                    if let Ok(parsed) = serde_json::from_slice::<HashMap<String, (u64, u64, String)>>(&decoded_bytes) {
-                        spinner.finish_and_clear();
-                        info!("Hash cache has {} entries", HumanCount(parsed.len() as u64));
-                        loaded = Some(parsed);
-                    } else if let Ok(old_parsed) = serde_json::from_slice::<HashMap<String, (u64, String)>>(&decoded_bytes) {
-                        // Migrate from old format (mtime, hash) to new format (mtime, 0, hash)
-                        info!("Migrating legacy hash cache format with {} entries", HumanCount(old_parsed.len() as u64));
-                        let migrated: HashMap<String, (u64, u64, String)> = old_parsed
-                            .into_iter()
-                            .map(|(k, (mtime, hash))| (k, (mtime, 0, hash)))
-                            .collect();
-                        loaded = Some(migrated);
-                    } else {
-                        info!("Failed to parse decompressed hash cache, falling back");
-                    }
-                }
-
-                if loaded.is_none() {
-                    // Try new format (mtime, size, hash)
-                    if let Ok(parsed) = serde_json::from_slice::<HashMap<String, (u64, u64, String)>>(&compressed) {
-                        info!("Loaded legacy hash cache (uncompressed) with {} entries", HumanCount(parsed.len() as u64));
-                        loaded = Some(parsed);
-                    } else if let Ok(old_parsed) = serde_json::from_slice::<HashMap<String, (u64, String)>>(&compressed) {
-                        // Migrate from old format
-                        info!("Migrating legacy hash cache format (uncompressed) with {} entries", HumanCount(old_parsed.len() as u64));
-                        let migrated: HashMap<String, (u64, u64, String)> = old_parsed
-                            .into_iter()
-                            .map(|(k, (mtime, hash))| (k, (mtime, 0, hash)))
-                            .collect();
-                        loaded = Some(migrated);
-                    } else {
-                        info!("Failed to load hash cache, starting fresh");
-                    }
-                }
-
-                if let Some(parsed) = loaded {
+            if let Ok(decoded_bytes) = decode_all(&compressed[..]) {
+                if let Ok(parsed) =
+                    serde_json::from_slice::<HashMap<String, (u64, u64, String)>>(&decoded_bytes)
+                {
+                    spinner.finish_and_clear();
+                    info!("Hash cache has {} entries", HumanCount(parsed.len() as u64));
                     cache = parsed;
+                } else {
+                    warn!("Failed to parse decompressed hash cache, falling back");
                 }
             }
+            spinner.finish_and_clear();
+        } else {
+            warn!("No hash cache file found, starting fresh");
         }
-        spinner.finish_and_clear();
         Self {
             cache_file,
-            cache: Arc::new(Mutex::new(cache))
+            cache: Arc::new(Mutex::new(cache)),
         }
     }
 
+    /// Retrieves the cached hash for a given file if it is still valid.
+    ///
+    /// This method normalizes the file path for cross-platform compatibility,
+    /// retrieves the file's current metadata (modification time and size),
+    /// and checks if there is a cached entry for the file. If a cached entry
+    /// exists and both the modification time and file size match the current
+    /// file metadata, the cached hash is returned. Otherwise, returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the file whose hash is being queried.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(String))` containing the cached hash if valid.
+    /// * `Ok(None)` if no valid cache entry exists.
+    /// * `Err` if file metadata cannot be accessed.
     pub fn get_hash(&self, file_path: &PathBuf) -> Result<Option<String>> {
-        let path_str = file_path.to_string_lossy().to_string();
+        // Normalize path to use forward slashes for cross-platform compatibility
+        let path_str = file_path.to_string_lossy().replace('\\', "/");
         let metadata = file_path.metadata()?;
-        let current_mtime = metadata.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_secs();
+        let current_mtime = metadata
+            .modified()?
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
         let current_size = metadata.len();
 
         if let Ok(cache) = self.cache.lock() {
@@ -105,10 +121,29 @@ impl HashCache {
         Ok(None)
     }
 
+    /// Updates or inserts the hash for a given file in the cache.
+    ///
+    /// This method normalizes the file path for cross-platform compatibility,
+    /// retrieves the file's metadata (modification time and size), and stores
+    /// the hash along with this metadata in the cache. If the file already
+    /// exists in the cache, its entry is updated.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the file whose hash is being set.
+    /// * `hash` - The hash string to associate with the file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file metadata cannot be accessed.
     pub fn set_hash(&self, file_path: &PathBuf, hash: String) -> Result<()> {
-        let path_str = file_path.to_string_lossy().to_string();
+        // Normalize path to use forward slashes for cross-platform compatibility
+        let path_str = file_path.to_string_lossy().replace('\\', "/");
         let metadata = file_path.metadata()?;
-        let mtime = metadata.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_secs();
+        let mtime = metadata
+            .modified()?
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
         let size = metadata.len();
 
         if let Ok(mut cache) = self.cache.lock() {
@@ -117,6 +152,15 @@ impl HashCache {
         Ok(())
     }
 
+    /// Saves the current hash cache to disk.
+    ///
+    /// This method serializes the in-memory hash cache to JSON, compresses it using zstd,
+    /// and writes it to the cache file. It displays a spinner while saving and logs the
+    /// compressed file size. Use multiple threads for compression if multiple cores are available.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if serialization, file creation, or compression fails.
     pub fn save(&self) -> Result<()> {
         let cache_path = &self.cache_file;
         let cache_size = fs::metadata(cache_path).map(|m| m.len()).unwrap_or(0);
@@ -125,20 +169,23 @@ impl HashCache {
             cache_path.display(),
             HumanBytes(cache_size)
         );
-
-        // Show a spinner while saving the cache file
         let spinner = ProgressBar::new_spinner();
         spinner.set_message("Saving hash cache...");
         spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-        
+
         if let Ok(cache) = self.cache.lock() {
             let content = serde_json::to_vec(&*cache)?;
             let file = fs::File::create(&self.cache_file)?;
             let mut encoder = Encoder::new(file, 9)?;
-            let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+            let threads = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1);
             if threads > 1 {
                 if let Err(err) = encoder.multithread(threads as u32) {
-                    info!("Failed to enable multi-threaded compression ({}), using single thread", err);
+                    info!(
+                        "Failed to enable multi-threaded compression ({}), using single thread",
+                        err
+                    );
                 }
             }
             encoder.write_all(&content)?;

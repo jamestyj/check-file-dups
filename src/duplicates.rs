@@ -5,7 +5,7 @@ use colored::Colorize;
 use indicatif::{HumanBytes, HumanCount};
 use log::{info, warn};
 
-use crate::utils::FileInfo;
+use crate::FileInfo;
 
 pub fn find_duplicates(files: Vec<FileInfo>) -> HashMap<String, Vec<FileInfo>> {
     let mut hash_groups: HashMap<String, Vec<FileInfo>> = HashMap::new();

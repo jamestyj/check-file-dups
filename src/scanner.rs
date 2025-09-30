@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::cache::HashCache;
-use crate::utils::FileInfo;
+use crate::FileInfo;
 
 pub fn calculate_file_hash(file_path: &PathBuf, cache: &HashCache, use_cache: bool) -> Result<String> {
     // Check cache first if enabled
