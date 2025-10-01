@@ -2,22 +2,37 @@ use anyhow::Result;
 use clap::Parser;
 use indicatif::HumanDuration;
 use log::{error, info};
-use simplelog::{ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, TerminalMode, TermLogger, WriteLogger};
+use serde::{Deserialize, Serialize};
+use simplelog::{
+    ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, TermLogger, TerminalMode, WriteLogger,
+};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use time::macros::format_description;
 
 use check_file_dups::{Cli, HashCache, find_duplicates, print_results, scan_directory_with_cache};
 
+/// Configuration structure for storing base path and skip directories.
+#[derive(Serialize, Deserialize)]
+struct Config {
+    base_path: String,
+    #[serde(default)]
+    skip_dirs: Vec<String>,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let start_time = std::time::Instant::now();
-    
+
     // Initialize console and file logging
     let log_file = std::env::current_dir()?.join(format!("{}.log", env!("CARGO_PKG_NAME")));
     let log_level = LevelFilter::Info;
     let log_config = ConfigBuilder::new()
-        .set_time_format_custom(format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"))
+        .set_time_format_custom(format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+        ))
         .set_time_offset_to_local()
         .unwrap_or_else(|builder| builder) // Fallback to UTC if local offset fails
         .build();
@@ -26,7 +41,7 @@ fn main() -> Result<()> {
             log_level,
             log_config.clone(),
             TerminalMode::Mixed,
-            ColorChoice::Auto
+            ColorChoice::Auto,
         ),
         WriteLogger::new(
             log_level,
@@ -34,8 +49,8 @@ fn main() -> Result<()> {
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&log_file)?
-        )
+                .open(&log_file)?,
+        ),
     ])?;
 
     info!(
@@ -46,11 +61,34 @@ fn main() -> Result<()> {
         cli.no_cache
     );
     info!("Logging to {}", log_file.display());
-    
+
+    let config_file = std::env::current_dir()
+        .expect("Failed to get current directory")
+        .join(format!("{}.toml", env!("CARGO_PKG_NAME")));
+
+    let config = if let Ok(config_content) = fs::read_to_string(&config_file) {
+        if let Ok(config) = toml::from_str::<Config>(&config_content) {
+            info!("Loaded config: base_path={}", config.base_path);
+            config
+        } else {
+            info!("Failed to parse config file, using default base path");
+            Config {
+                base_path: ".".to_string(),
+                skip_dirs: Vec::new(),
+            }
+        }
+    } else {
+        info!("No config file found, using default base path");
+        Config {
+            base_path: ".".to_string(),
+            skip_dirs: Vec::new(),
+        }
+    };
+
     if cli.no_cache {
         info!("Hash cache disabled - computing all hashes fresh");
     }
-    
+
     // Create a global cache instance for signal handling
     let global_cache = Arc::new(HashCache::new());
     let cache_for_signal = global_cache.clone();
@@ -73,7 +111,14 @@ fn main() -> Result<()> {
         std::process::exit(130); // STATUS_CONTROL_C_EXIT
     })?;
 
-    let files = scan_directory_with_cache(&cli.path, &global_cache, cli.threads.unwrap(), cli.no_cache)?;
+    let files = scan_directory_with_cache(
+        &cli.path,
+        &global_cache,
+        &PathBuf::from(&config.base_path),
+        &config.skip_dirs,
+        cli.threads.unwrap(),
+        cli.no_cache,
+    )?;
 
     let duplicates = find_duplicates(files);
     print_results(&duplicates, &cli.path);
@@ -85,7 +130,10 @@ fn main() -> Result<()> {
         }
     }
 
-    info!("Program completed successfully in {}", HumanDuration(start_time.elapsed()));
+    info!(
+        "Program completed successfully in {}",
+        HumanDuration(start_time.elapsed())
+    );
 
     Ok(())
 }

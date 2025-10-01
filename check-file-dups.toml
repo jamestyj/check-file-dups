@@ -1,0 +1,12 @@
+# check-file-dups configuration file
+# 
+# base_path: The base path to strip from the file paths.
+# Example: base_path = "Z:\\"
+base_path = "Z:\\"
+
+# skip_dirs: List of directory names or paths to skip during scanning.
+# Example: skip_dirs = ["node_modules", ".git", "temp"]
+skip_dirs = ["@eaDir"]
+
+# TODO:
+# - Compile and run on NAS

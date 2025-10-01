@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use blake3;
 use indicatif::{HumanBytes, HumanCount, ProgressBar, ProgressStyle};
-use log::{error, info};
+use log::{error, info, warn};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
@@ -47,6 +47,8 @@ pub fn calculate_file_hash(file_path: &PathBuf, base_path: &PathBuf, cache: &Has
 pub fn scan_directory_with_cache(
     path: &PathBuf, 
     cache: &HashCache, 
+    base_path: &PathBuf,
+    skip_dirs: &[String],
     num_threads: usize,
     no_cache: bool
 ) -> Result<Vec<FileInfo>> {
@@ -70,6 +72,17 @@ pub fn scan_directory_with_cache(
         match entry {
             Ok(entry) => {
                 let path = entry.path();
+                
+                // Check if this directory should be skipped
+                let should_skip = skip_dirs.iter().any(|skip_dir| {
+                    path.to_string_lossy().contains(skip_dir)
+                });
+                
+                if should_skip {
+                    warn!("Skipping path: {}", path.display());
+                    continue;
+                }
+                
                 if path.is_dir() {
                     total_dirs += 1;
                 } else if path.is_file() {
@@ -81,8 +94,8 @@ pub fn scan_directory_with_cache(
                     }
                 }
             }
-            Err(_e) => {
-                // error!("Failed to read directory entry: {}", e);
+            Err(e) => {
+                warn!("Failed to read directory entry: {}", e);
             }
         }
     }
@@ -112,12 +125,7 @@ pub fn scan_directory_with_cache(
     let files_processed = Arc::new(AtomicUsize::new(0));
     let total_size_processed = Arc::new(AtomicU64::new(0));
     let last_update = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
-    let base_path = path.components().next().map(|c| {
-        let mut drive = std::path::PathBuf::new();
-        drive.push(c.as_os_str());
-        drive
-    }).unwrap_or_else(|| path.to_path_buf());
-    
+
     // Process files in parallel
     info!("Scanning files...");
     let results: Vec<Result<FileInfo>> = file_paths

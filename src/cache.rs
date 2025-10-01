@@ -104,7 +104,11 @@ impl HashCache {
     pub fn get_hash(&self, file_path: &PathBuf, base_path: &PathBuf) -> Result<Option<String>> {
         // Strip base path and normalize to use forward slashes for cross-platform compatibility
         let relative_path = file_path.strip_prefix(base_path).unwrap_or(file_path);
-        let path_str = relative_path.to_string_lossy().replace('\\', "/").trim_start_matches('/').to_string();
+        let path_str = relative_path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .trim_start_matches('/')
+            .to_string();
         let metadata = file_path.metadata()?;
         let current_mtime = metadata
             .modified()?
@@ -141,8 +145,13 @@ impl HashCache {
     /// Returns an error if file metadata cannot be accessed.
     pub fn set_hash(&self, file_path: &PathBuf, base_path: &PathBuf, hash: String) -> Result<()> {
         // Strip base path and normalize to use forward slashes for cross-platform compatibility
-        let relative_path = file_path.strip_prefix(base_path).unwrap_or(file_path);
-        let path_str = relative_path.to_string_lossy().replace('\\', "/").trim_start_matches('/').to_string();
+        let path_str = file_path
+            .strip_prefix(base_path)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .replace('\\', "/")
+            .trim_start_matches('/')
+            .to_string();
         let metadata = file_path.metadata()?;
         let mtime = metadata
             .modified()?
