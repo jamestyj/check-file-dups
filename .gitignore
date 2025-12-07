@@ -1,4 +1,4 @@
 target/
-*.log
-*.zst
+check-file-dups.log
 check-file-dups.toml
+check-file-dups-cache.json.zst
