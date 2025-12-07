@@ -62,30 +62,17 @@ The code is organized into the following files:
 2. Clone this repository. For example:
 
     ```term
-    git clone git@github.com:jamestyj/check-file-dups.git
-    cd check-file-dups
+    > git clone git@github.com:jamestyj/check-file-dups.git
+    > cd check-file-dups
     ```
 
 3. Build the project.
 
     ```term
-    cargo build --release
+    > cargo build --release
     ```
 
     Sample output:
-
-    **Linux (WSL)**
-
-    ```term
-    $ cargo build --release
-    Compiling libc v0.2.176
-    Compiling proc-macro2 v1.0.101
-    ...
-    Compiling check-file-dups v0.1.0 (/code/check-file-dups)
-     Finished `release` profile [optimized] target(s) in 17.57s
-    ```
-
-    **Windows**
 
     ```term
     > cargo build --release
@@ -102,8 +89,6 @@ The code is organized into the following files:
 
 Run with `--help` to display command arguments and options. For example:
 
-**Windows**
-
 ```term
 > .\target\release\check-file-dups --help
 A CLI tool to find duplicate files in a directory
@@ -114,15 +99,13 @@ Arguments:
   [PATH]  Directory to scan for duplicates [default: .]
 
 Options:
-  -t, --threads <THREADS>  Number of parallel threads for hashing (default: 1) [default: 1]
-      --no-cache           Skip using hash cache and compute all hashes fresh
+  -t, --threads <THREADS>  Number of parallel threads for hashing. Use multiple threads if the
+                           images are on NVMe SSD (e.g. CPU is the bottleneck). Otherwise a
+                           single thread (default) is typically faster [default: 1]
+  -n, --no-cache           Skip using hash cache and compute all hashes fresh. For performance
+                           testing / benchmarking optimal number of threads to use [default: false]
   -h, --help               Print help
 ```
-
-Notes:
-
-- `--threads <THREADS>`: Use multiple threads if the images are on NVMe SSD (e.g. CPU is the bottleneck). Otherwise a single thread (default) is typically faster.
-- `--no-cache`: Skip hash cache. For performance testing / benchmarking optimal number of threads to use.
 
 ### Configuration file
 
