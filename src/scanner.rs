@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use anyhow::Result;
 use blake3;
@@ -11,10 +11,15 @@ use log::{error, info, warn};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::cache::HashCache;
 use crate::FileInfo;
+use crate::cache::HashCache;
 
-pub fn calculate_file_hash(file_path: &PathBuf, base_path: &PathBuf, cache: &HashCache, use_cache: bool) -> Result<String> {
+pub fn calculate_file_hash(
+    file_path: &PathBuf,
+    base_path: &PathBuf,
+    cache: &HashCache,
+    use_cache: bool,
+) -> Result<String> {
     // Check cache first if enabled
     if use_cache {
         if let Some(cached_hash) = cache.get_hash(file_path, base_path)? {
@@ -40,49 +45,60 @@ pub fn calculate_file_hash(file_path: &PathBuf, base_path: &PathBuf, cache: &Has
     if use_cache {
         cache.set_hash(file_path, base_path, hash.clone())?;
     }
-    
+
     Ok(hash)
 }
 
 pub fn scan_directory_with_cache(
-    path: &PathBuf, 
-    cache: &HashCache, 
+    path: &PathBuf,
+    cache: &HashCache,
     base_path: &PathBuf,
     skip_dirs: &[String],
     num_threads: usize,
-    no_cache: bool
+    no_cache: bool,
 ) -> Result<Vec<FileInfo>> {
     let mut files = Vec::new();
-    
+
     // First pass: count files and directories, calculate total size
     let mut total_files = 0;
     let mut total_dirs = 0;
     let mut total_size = 0u64;
 
     info!("Scanning {}", path.display());
-    
+
     // Add a progress bar for the directory scan
     let pb = ProgressBar::new_spinner();
     pb.set_message("Scanning files and directories...");
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
     let mut file_paths = Vec::new();
-    for entry in WalkDir::new(path).follow_links(true).into_iter() {
+    let mut skipped_dirs = std::collections::HashSet::new();
+
+    for entry in WalkDir::new(path)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(|e| {
+            // Check if this entry should be skipped
+            let path = e.path();
+            let should_skip = skip_dirs
+                .iter()
+                .any(|skip_dir| path.to_string_lossy().contains(skip_dir));
+
+            // If it's a directory and should be skipped, log it once
+            if should_skip && path.is_dir() {
+                if skipped_dirs.insert(path.to_path_buf()) {
+                    warn!("Skipping directory: {}", path.display());
+                }
+            }
+
+            !should_skip
+        })
+    {
         pb.tick();
         match entry {
             Ok(entry) => {
                 let path = entry.path();
-                
-                // Check if this directory should be skipped
-                let should_skip = skip_dirs.iter().any(|skip_dir| {
-                    path.to_string_lossy().contains(skip_dir)
-                });
-                
-                if should_skip {
-                    warn!("Skipping path: {}", path.display());
-                    continue;
-                }
-                
+
                 if path.is_dir() {
                     total_dirs += 1;
                 } else if path.is_file() {
@@ -100,10 +116,14 @@ pub fn scan_directory_with_cache(
         }
     }
     pb.finish_and_clear();
-    
-    info!("Found {} files and {} directories ({})", 
-    HumanCount(total_files), HumanCount(total_dirs), HumanBytes(total_size));
-    
+
+    info!(
+        "Found {} files and {} directories ({})",
+        HumanCount(total_files),
+        HumanCount(total_dirs),
+        HumanBytes(total_size)
+    );
+
     let progress_bar = {
         let pb = ProgressBar::new(total_size as u64);
         pb.set_style(
@@ -114,13 +134,13 @@ pub fn scan_directory_with_cache(
         );
         Some(pb)
     };
-   
+
     // Set up parallel processing
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build_global()
         .unwrap();
-    
+
     let progress_bar = progress_bar.as_ref();
     let files_processed = Arc::new(AtomicUsize::new(0));
     let total_size_processed = Arc::new(AtomicU64::new(0));
@@ -139,7 +159,7 @@ pub fn scan_directory_with_cache(
                 }
             };
             let size = metadata.len();
-            
+
             let hash = match calculate_file_hash(path, &base_path, &cache, !no_cache) {
                 Ok(hash) => hash,
                 Err(e) => {
@@ -147,11 +167,11 @@ pub fn scan_directory_with_cache(
                     return Err(e);
                 }
             };
-            
+
             // Update progress
             let processed = files_processed.fetch_add(1, Ordering::Relaxed) + 1;
             let size_processed = total_size_processed.fetch_add(size, Ordering::Relaxed) + size;
-            
+
             if let Some(pb) = progress_bar {
                 let mut last_update_guard = last_update.lock().unwrap();
                 if last_update_guard.elapsed().as_millis() > 200 {
@@ -164,7 +184,7 @@ pub fn scan_directory_with_cache(
                     *last_update_guard = std::time::Instant::now();
                 }
             }
-            
+
             Ok(FileInfo {
                 path: path.clone(),
                 size,
@@ -172,7 +192,7 @@ pub fn scan_directory_with_cache(
             })
         })
         .collect();
-    
+
     // Collect successful results
     for result in results {
         match result {
@@ -182,10 +202,10 @@ pub fn scan_directory_with_cache(
             }
         }
     }
-    
+
     if let Some(pb) = progress_bar {
         pb.finish_with_message("Scan complete!");
     }
-    
+
     Ok(files)
 }
