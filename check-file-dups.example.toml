@@ -1,0 +1,12 @@
+# check-file-dups configuration file
+#
+# Copy this file to check-file-dups.toml to customize behavior
+
+# base_path: The base path to strip from the file paths in output.
+# Useful if scanning a mounted drive or specific subdirectory.
+# Example: base_path = "C:\\path\\to\\scan"
+base_path = ""
+
+# skip_dirs: List of directory names or paths to skip during scanning.
+# Example: skip_dirs = ["@eaDir", "Lightroom Backups"]
+skip_dirs = []

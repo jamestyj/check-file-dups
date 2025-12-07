@@ -13,58 +13,6 @@ A fast and efficient Rust CLI tool to find duplicate files in a directory using 
 - **Comprehensive logging**: Console and file logging with timestamps
 - **Graceful exit**: Saves cache on Ctrl+C and unexpected exits
 
-## Installation
-
-### From Source
-
-```bash
-git clone <repository-url>
-cd check-file-dups
-cargo build --release
-```
-
-## Usage
-
-```bash
-# Scan current directory
-./target/release/check-file-dups
-
-# Scan specific directory
-./target/release/check-file-dups /path/to/directory
-
-# Use custom thread count
-./target/release/check-file-dups --threads 8 /path/to/directory
-```
-
-## Command Line Options
-
-- `path`: Directory to scan (default: current directory)
-- `-t, --threads <THREADS>`: Number of parallel threads for hashing (default: 1). Use multiple threads if running on SSD. Otherwise single thread is faster.
-- `--no-cache`: Skip hash cache. For performance testing / benchmarking optimal number of threads to use.
-- `-h, --help`: Print help information
-
-## Output
-
-### When duplicates are found:
-```
-Found 5 duplicate files wasting 2.3 MB of space
-
-Duplicate group (1.2 MB, 2 files):
-  file1.txt
-  file2.txt
-
-Duplicate group (800 KB, 3 files):
-  photo1.jpg
-  photo1_copy.jpg
-  photo1_backup.jpg
-```
-
-### When no duplicates are found:
-```
-No duplicate files found!
-```
-*(Displayed in green)*
-
 ## Performance Features
 
 - **BLAKE3 hashing**: Fast cryptographic hashing optimized for speed
@@ -77,6 +25,7 @@ No duplicate files found!
 ## Cache System
 
 The tool automatically creates a hash cache file (`check-file-dups-cache.json`) in the current directory:
+
 - **Purpose**: Stores file hashes with modification times to avoid recomputation
 - **Persistence**: Cache is saved on normal exit and on Ctrl+C interruption
 - **Validation**: Files are re-hashed if their modification time changes
@@ -88,36 +37,108 @@ The tool automatically creates a hash cache file (`check-file-dups-cache.json`) 
 - **Timestamp format**: `YYYY-MM-DD HH:MM:SS.mmm` with millisecond precision
 - **Log levels**: INFO for general operations, WARN for duplicate findings
 
-## Architecture
-
-The project is organized into modular components:
-- `cli.rs`: Command-line argument parsing
-- `scanner.rs`: File scanning and hashing logic
-- `cache.rs`: Hash caching system
-- `duplicates.rs`: Duplicate detection and result formatting
-- `utils.rs`: Utility functions and data structures
-- `main.rs`: Application orchestration
-
 ## Requirements
 
 - Rust 1.90 or later
 - Windows, macOS, or Linux
 - Sufficient disk space for hash cache (typically 1-2% of scanned data size)
 
-## TODOs
+## Code Organization
 
-- Add option to delete duplicate files + dry-run mode
-  - Delete duplicate with longer filename
-- Check for original and -edited version, delete original
-- Ignore James/@eaDir/P1010249.jpg@SynoEAStream files
-- Add summary of transfer speed
-- Print hash cache stats
-- Prune hash cache file entries that no longer exist on disk
-- Print disk usage stats, summarise average photo and video files, etc.
-- Check metadata, group by day and month, etc.
-- NAS
-  - SSH key from Windows to NAS
+The code is organized into the following files:
 
+- `cache.rs`: Hash caching system
+- `cli.rs`: Command-line argument parsing
+- `duplicates.rs`: Duplicate detection and result formatting
+- `lib.rs`: Utility functions and data structures
+- `main.rs`: Application orchestration
+- `scanner.rs`: File scanning and hashing logic
 
-    "Z:\\Pictures\\2020\\Personal\\2020-06-20 Woodleigh Showroom\\IMG_20200620_104042.jpg"
-        "Pictures.2001-2019/2011-2019/2013/20130608_175902_Richtone(HDR).jpg"
+## Installation
+
+### From Source
+
+1. Install Rust: <https://rust-lang.org/tools/install>.
+2. Clone this repository. For example:
+
+    ```term
+    git clone git@github.com:jamestyj/check-file-dups.git
+    cd check-file-dups
+    ```
+
+3. Build the project.
+
+    ```term
+    cargo build --release
+    ```
+
+    Sample output:
+
+    **Linux (WSL)**
+
+    ```term
+    $ cargo build --release
+    Compiling libc v0.2.176
+    Compiling proc-macro2 v1.0.101
+    ...
+    Compiling check-file-dups v0.1.0 (/code/check-file-dups)
+     Finished `release` profile [optimized] target(s) in 17.57s
+    ```
+
+    **Windows**
+
+    ```term
+    > cargo build --release
+    Compiling getrandom v0.3.3
+    Compiling proc-macro2 v1.0.101
+    ...
+    Compiling check-file-dups v0.1.0 (C:\code\check-file-dups)
+     Finished `release` profile [optimized] target(s) in 8.02s
+    ```
+
+## Usage
+
+### Display help
+
+Run with `--help` to display command arguments and options. For example:
+
+**Windows**
+
+```term
+> .\target\release\check-file-dups --help
+A CLI tool to find duplicate files in a directory
+
+Usage: check-file-dups.exe [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]  Directory to scan for duplicates [default: .]
+
+Options:
+  -t, --threads <THREADS>  Number of parallel threads for hashing (default: 1) [default: 1]
+      --no-cache           Skip using hash cache and compute all hashes fresh
+  -h, --help               Print help
+```
+
+Notes:
+
+- `--threads <THREADS>`: Use multiple threads if the images are on NVMe SSD (e.g. CPU is the bottleneck). Otherwise a single thread (default) is typically faster.
+- `--no-cache`: Skip hash cache. For performance testing / benchmarking optimal number of threads to use.
+
+### Configuration file
+
+To configure the tool, copy [`check-file-dups.example.toml`](./check-file-dups.example.toml) to `check-file-dups.toml` and customize it.
+
+```toml
+# check-file-dups configuration file
+#
+# Copy this file to check-file-dups.toml to customize behavior
+
+# base_path: The base path to strip from the file paths in output.
+# Useful if scanning a mounted drive or specific subdirectory.
+# Example: base_path = "C:\\path\\to\\scan"
+base_path = ""
+
+# skip_dirs: List of directory names or paths to skip during scanning.
+# Example: skip_dirs = ["@eaDir", "Lightroom Backups"]
+skip_dirs = []
+```

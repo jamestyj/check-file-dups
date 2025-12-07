@@ -1,3 +1,4 @@
 target/
 *.log
 *.zst
+check-file-dups.toml
