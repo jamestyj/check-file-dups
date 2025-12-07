@@ -80,9 +80,10 @@ pub fn scan_directory_with_cache(
         .filter_entry(|e| {
             // Check if this entry should be skipped
             let path = e.path();
-            let should_skip = skip_dirs
-                .iter()
-                .any(|skip_dir| path.to_string_lossy().contains(skip_dir));
+            let should_skip = skip_dirs.iter().any(|skip_dir| {
+                path.components()
+                    .any(|component| component.as_os_str().to_string_lossy() == *skip_dir)
+            });
 
             // If it's a directory and should be skipped, log it once
             if should_skip && path.is_dir() {
