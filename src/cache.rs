@@ -210,4 +210,59 @@ impl HashCache {
         spinner.finish_and_clear();
         Ok(())
     }
+
+    /// Prunes the cache by removing entries for files that no longer exist on disk.
+    ///
+    /// This method iterates through all cached entries and checks if the corresponding
+    /// file still exists. If a file is missing, its entry is removed from the cache.
+    /// Progress is displayed via a spinner, and statistics about pruned entries are logged.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_path` - The base path to resolve relative file paths against.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache lock cannot be acquired.
+    pub fn prune(&self, base_path: &PathBuf) -> Result<()> {
+        info!("Pruning cache entries for non-existent files...");
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_message("Pruning hash cache...");
+        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        let mut removed_count = 0;
+        let total_count;
+
+        if let Ok(mut cache) = self.cache.lock() {
+            total_count = cache.len();
+            let mut to_remove = Vec::new();
+
+            // Collect keys to remove (can't modify while iterating)
+            for (path_str, _) in cache.iter() {
+                let file_path = base_path.join(path_str);
+                if !file_path.exists() {
+                    to_remove.push(path_str.clone());
+                }
+            }
+
+            // Remove the collected keys
+            for path_str in to_remove {
+                cache.remove(&path_str);
+                removed_count += 1;
+            }
+        } else {
+            spinner.finish_and_clear();
+            return Err(anyhow::anyhow!("Failed to acquire cache lock for pruning"));
+        }
+
+        spinner.finish_and_clear();
+        info!(
+            "Pruned {} of {} cache entries ({:.1}% removed)",
+            HumanCount(removed_count as u64),
+            HumanCount(total_count as u64),
+            (removed_count as f64 / total_count as f64) * 100.0
+        );
+
+        Ok(())
+    }
 }

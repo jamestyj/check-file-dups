@@ -19,4 +19,9 @@ pub struct Cli {
     /// For performance testing / benchmarking optimal number of threads to use [default: false]
     #[arg(short, long, default_value = "false")]
     pub no_cache: bool,
+
+    /// Remove cache entries for files that no longer exist on disk.
+    /// Useful for cleaning up the cache after files have been deleted or moved [default: false]
+    #[arg(short, long, default_value = "false")]
+    pub prune_cache: bool,
 }

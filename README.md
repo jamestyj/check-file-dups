@@ -182,6 +182,8 @@ Options:
                            single thread (default) is typically faster [default: 1]
   -n, --no-cache           Skip using hash cache and compute all hashes fresh. For performance
                            testing / benchmarking optimal number of threads to use [default: false]
+  -p, --prune-cache        Remove cache entries for files that no longer exist on disk.
+                           Useful for cleaning up the cache after files have been deleted or moved [default: false]
   -h, --help               Print help
 ```
 
@@ -203,6 +205,29 @@ base_path = ""
 # Example: skip_dirs = ["@eaDir", "Lightroom Backups"]
 skip_dirs = []
 ```
+
+### Cache maintenance
+
+The tool maintains a hash cache file (`check-file-dups-cache.json.zst`) to speed up subsequent scans. Over time, this cache may accumulate entries for files that have been deleted or moved. You can clean up these stale entries using the `--prune-cache` option:
+
+```term
+> .\target\release\check-file-dups --prune-cache
+```
+
+This will:
+
+1. Load the existing cache
+2. Check each cached entry to see if the file still exists
+3. Remove entries for non-existent files
+4. Save the cleaned cache back to disk
+
+The tool will log statistics about how many entries were pruned. For example:
+
+```text
+Pruned 1,234 of 10,000 cache entries (12.3% removed)
+```
+
+**Note**: The `--prune-cache` option is ignored if `--no-cache` is also specified.
 
 ## Development
 

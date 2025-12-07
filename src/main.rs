@@ -54,11 +54,12 @@ fn main() -> Result<()> {
     ])?;
 
     info!(
-        "Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}",
+        "Starting check-file-dups v{} with options: path={}, threads={:?}, no_cache={}, prune_cache={}",
         env!("CARGO_PKG_VERSION"),
         cli.path.display(),
         cli.threads.unwrap(),
-        cli.no_cache
+        cli.no_cache,
+        cli.prune_cache
     );
     info!("Logging to {}", log_file.display());
 
@@ -91,6 +92,20 @@ fn main() -> Result<()> {
 
     // Create a global cache instance for signal handling
     let global_cache = Arc::new(HashCache::new());
+
+    // Prune cache if requested
+    if cli.prune_cache && !cli.no_cache {
+        let base_path = PathBuf::from(&config.base_path);
+        if let Err(e) = global_cache.prune(&base_path) {
+            error!("Failed to prune cache: {}", e);
+        } else {
+            // Save the pruned cache immediately
+            if let Err(e) = global_cache.save() {
+                error!("Failed to save pruned cache: {}", e);
+            }
+        }
+    }
+
     let cache_for_signal = global_cache.clone();
 
     // Set up signal handler for Ctrl+C and other unexpected exits
