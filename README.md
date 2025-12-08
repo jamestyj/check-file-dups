@@ -1,6 +1,8 @@
 # check-file-dups
 
-A fast and efficient cross-platform Rust CLI (Command Line Interface) tool to detect duplicate files in a specified directory.
+A very fast and efficient cross-platform Rust CLI (Command Line Interface) tool to detect duplicate files. 
+
+It can scan through hundreds of thousands of files within a few seconds after the initial run. On my desktop it takes ~6 seconds to (re)scan my full media library with ~100k files (3.2 TB) on a direct-attached 3.5" spinning hard disk (HDD).
 
 ## Why write another duplicate file finder?
 
