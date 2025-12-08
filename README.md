@@ -1,5 +1,7 @@
 # check-file-dups
 
+[![Rust](https://github.com/jamestyj/check-file-dups/actions/workflows/rust.yml/badge.svg)](https://github.com/jamestyj/check-file-dups/actions/workflows/rust.yml)
+
 A very fast and efficient cross-platform Rust CLI (Command Line Interface) tool to detect duplicate files. 
 
 It can scan through hundreds of thousands of files within a few seconds after the initial run. On my desktop it takes ~6 seconds to (re)scan my full media library with ~100k files (3.2 TB) on a direct-attached 3.5" spinning hard disk (HDD).
